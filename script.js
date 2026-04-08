@@ -47,10 +47,7 @@ async function runReader(p) {
     log(`R${p.id} arrived — will read for ${p.dur}s`, "r");
     p.ph = "wait_rt"; render();
 
-    // Wait until no writers are active or waiting
-    while (waitingWriters > 0) await sl(50); // poll every 50ms
-
-    await sRT.wait(); // acquire readTry
+    await sRT.wait(); // acquire readTry (fair FIFO queue with writers)
     p.ph = "entry"; render();
 
     await sRC.wait(); // lock rc counter
@@ -67,6 +64,8 @@ async function runReader(p) {
     if (rc === 0) sRes.signal(); // last reader releases resource
     sRC.signal();
 
+    sRT.signal(); // release readTry — critical for fairness!
+
     log(`R${p.id} done`, "r");
     p.ph = "done"; nDone++;
     procs.delete(p.id);
@@ -78,7 +77,7 @@ async function runWriter(p) {
     log(`W${p.id} arrived — will write for ${p.dur}s`, "w");
     p.ph = "wait_rt"; render();
 
-    waitingWriters++;              // NEW: mark this writer as waiting
+    waitingWriters++;              // mark this writer as waiting
     await sRT.wait();              // acquire readTry to block new readers
     p.ph = "wait_res";
     log(`W${p.id} acquired readTry — new readers now blocked`, "w"); render();
