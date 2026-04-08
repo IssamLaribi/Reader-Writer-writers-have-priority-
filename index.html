@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Readers/Writers (writers have priority)</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" async></script>
+</head>
+<body>
+    <div id="rw">
+        <div class="rw-top">
+            <div>
+                <div class="rw-title">Readers — Writers <span class="priority-badge">Writer Priority</span></div>
+                <div class="rw-subs">writer preempts new readers via readTry semaphore</div>
+            </div>
+            <div class="rw-sems">
+                <div class="rw-sem" id="sem-rt"><span>readTry</span><span class="sv" id="sv-rt">1</span></div>
+                <div class="rw-sem" id="sem-res"><span>resource</span><span class="sv" id="sv-res">1</span></div>
+                <div class="rw-sem"><span>readCount</span><span class="sv" id="sv-rc">0</span></div>
+            </div>
+        </div>
+
+        <div class="rw-zones">
+            <div class="rw-zone" id="z-r">
+                <div class="rw-zhdr"><span>Reader Queue</span><span class="rw-cnt" id="cn-r">0</span></div>
+                <div class="rw-wp" id="wp">⊘ Writer Priority — Blocked</div>
+                <div id="pr-r">
+                    <div class="rw-empty">No readers waiting</div>
+                </div>
+            </div>
+            <div class="rw-zone rw-cs" id="z-cs">
+                <div class="rw-zhdr" id="cs-hdr"><span id="cs-lbl">Critical Section</span><span class="rw-cnt" id="cn-cs">0</span></div>
+                <div class="rw-cs-state" id="cs-st">— empty —</div>
+                <div id="pr-cs"></div>
+            </div>
+            <div class="rw-zone" id="z-w">
+                <div class="rw-zhdr"><span>Writer Queue</span><span class="rw-cnt" id="cn-w">0</span></div>
+                <div id="pr-w">
+                    <div class="rw-empty">No writers waiting</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="rw-ctrl">
+            <div class="rw-add">
+                <label>Reader Time</label>
+                <div class="input-box">
+                    <input type="number" id="r-t" value="4" min="1" max="20" step="1">
+                    <span class="u">s</span>
+                </div>
+                <button onclick="addP('reader')" class="btn-r">+ Reader</button>
+            </div>
+            <div class="rw-add">
+                <label>Writer Time</label>
+                <div class="input-box">
+                    <input type="number" id="w-t" value="3" min="1" max="20" step="1">
+                    <span class="u">s</span>
+                </div>
+                <button onclick="addP('writer')" class="btn-w">+ Writer</button>
+            </div>
+            <div class="rw-add">
+                <label>Speed</label>
+                <div class="rw-spd">
+                    <button onclick="spd(2000)" id="b05">0.5×</button>
+                    <button onclick="spd(1000)" id="b1" class="act">1×</button>
+                    <button onclick="spd(500)" id="b2">2×</button>
+                    <button onclick="spd(250)" id="b4">4×</button>
+                </div>
+            </div>
+            <div class="rw-stats">
+                <div class="rw-st"><b id="st-tot">0</b><span>Total</span></div>
+                <div class="rw-st"><b id="st-dn">0</b><span>Done</span></div>
+                <div class="rw-st blue-text"><b id="st-rd">0</b><span>Reading</span></div>
+                <div class="rw-st orange-text"><b id="st-wr">0</b><span>Writing</span></div>
+            </div>
+        </div>
+
+        <div class="rw-log" id="log"></div>
+
+        <div class="rw-note">
+            <b>Writer Priority Mechanism:</b> When a writer arrives, it acquires <b>readTry</b>, blocking new readers. Once active readers finish, the writer gains exclusive access via <b>resource</b>.
+        </div>
+    </div>
+</body>
+</html>
