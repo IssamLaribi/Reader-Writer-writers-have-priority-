@@ -30,6 +30,7 @@ let rc = 0,             // current readers in critical section
     nDone = 0;          // completed processes
 const procs = new Map(), // active processes
     logs = [];           // log messages
+let waitingWriters = 0;
 
 // Helper functions
 function sl(ms) { return new Promise((r) => setTimeout(r, ms)); } // sleep
@@ -46,9 +47,12 @@ async function runReader(p) {
     log(`R${p.id} arrived — will read for ${p.dur}s`, "r");
     p.ph = "wait_rt"; render();
 
-    await sRT.wait(); // acquire readTry (block if a writer is waiting)
+    // Wait until no writers are active or waiting
+    while (waitingWriters > 0) await sl(50); // poll every 50ms
 
+    await sRT.wait(); // acquire readTry
     p.ph = "entry"; render();
+
     await sRC.wait(); // lock rc counter
     rc++;
     if (rc === 1) await sRes.wait(); // first reader locks resource
@@ -60,11 +64,7 @@ async function runReader(p) {
 
     await sRC.wait();
     rc--;
-    if (rc === 0) {
-        sRes.signal(); // last reader releases resource
-        log(`R${p.id} released resource (last reader)`, "r");
-        sRT.signal(); // now release readTry after last reader leaves
-    }
+    if (rc === 0) sRes.signal(); // last reader releases resource
     sRC.signal();
 
     log(`R${p.id} done`, "r");
@@ -77,18 +77,20 @@ async function runReader(p) {
 async function runWriter(p) {
     log(`W${p.id} arrived — will write for ${p.dur}s`, "w");
     p.ph = "wait_rt"; render();
-    await sRT.wait(); // Acquire readTry to block new readers
 
+    waitingWriters++;              // NEW: mark this writer as waiting
+    await sRT.wait();              // acquire readTry to block new readers
     p.ph = "wait_res";
     log(`W${p.id} acquired readTry — new readers now blocked`, "w"); render();
-    await sRes.wait(); // Acquire exclusive resource
+    await sRes.wait();             // acquire exclusive resource
+    waitingWriters--;              // done waiting
 
     p.ph = "writing"; p.t0 = Date.now();
     log(`W${p.id} → entered critical section (exclusive write)`, "w"); render();
     await sl(p.dur * TICK);
 
-    sRes.signal(); // Release resource
-    sRT.signal();  // Release readTry
+    sRes.signal();                 // release resource
+    sRT.signal();                  // release readTry
     log(`W${p.id} done — readTry released, readers unblocked`, "w");
     p.ph = "done"; nDone++;
     procs.delete(p.id);
