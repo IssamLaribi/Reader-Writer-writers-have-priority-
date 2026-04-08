@@ -46,14 +46,13 @@ async function runReader(p) {
     log(`R${p.id} arrived — will read for ${p.dur}s`, "r");
     p.ph = "wait_rt"; render();
 
-    await sRT.wait(); // acquire readTry
+    await sRT.wait(); // acquire readTry (block if a writer is waiting)
 
     p.ph = "entry"; render();
     await sRC.wait(); // lock rc counter
     rc++;
     if (rc === 1) await sRes.wait(); // first reader locks resource
     sRC.signal();
-    sRT.signal(); // release readTry
 
     p.ph = "reading"; p.t0 = Date.now();
     log(`R${p.id} → entered critical section (reading)`, "r"); render();
@@ -64,6 +63,7 @@ async function runReader(p) {
     if (rc === 0) {
         sRes.signal(); // last reader releases resource
         log(`R${p.id} released resource (last reader)`, "r");
+        sRT.signal(); // now release readTry after last reader leaves
     }
     sRC.signal();
 
