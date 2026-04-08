@@ -1,1 +1,22 @@
-.vscode
+# Node modules (if you ever use Node)
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# VSCode settings
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build or dist folders (if you generate any)
+dist/
+build/
+
+# Optional: environment files
+.env
