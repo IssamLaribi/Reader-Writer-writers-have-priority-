@@ -21,7 +21,8 @@ class Sem {
 // Semaphores for read/write control
 const sRT = new Sem(1), // readTry semaphore
     sRes = new Sem(1),  // resource semaphore
-    sRC = new Sem(1);   // reader count semaphore
+    sRC = new Sem(1),   // reader count semaphore
+    sWC = new Sem(1);   // writer count semaphore
 
 let rc = 0,             // current readers in critical section
     TICK = 1000,        // base tick for timing
@@ -30,7 +31,7 @@ let rc = 0,             // current readers in critical section
     nDone = 0;          // completed processes
 const procs = new Map(), // active processes
     logs = [];           // log messages
-let waitingWriters = 0;
+
 
 // Helper functions
 function sl(ms) { return new Promise((r) => setTimeout(r, ms)); } // sleep
@@ -42,55 +43,100 @@ function log(msg, c) {
     renderLog();
 }
 
-// Reader process
+// === Java-like semaphores ===
+const mutex = new Sem(1);
+const readSem = new Sem(0);
+const writeSem = new Sem(0);
+
+// === Counters (same as Java) ===
+let activeReaders = 0;
+let waitingReaders = 0;
+let activeWriters = 0;
+let waitingWriters = 0;
+
+// === Reader ===
 async function runReader(p) {
-    log(`R${p.id} arrived — will read for ${p.dur}s`, "r");
-    p.ph = "wait_rt"; render();
+    log(`R${p.id} wants to read`, "r");
+    p.ph = "wait"; render();
 
-    await sRT.wait(); // acquire readTry (fair FIFO queue with writers)
-    p.ph = "entry"; render();
+    await mutex.wait();
 
-    await sRC.wait(); // lock rc counter
-    rc++;
-    if (rc === 1) await sRes.wait(); // first reader locks resource
-    sRC.signal();
+    while (activeWriters > 0 || waitingWriters > 0) {
+        waitingReaders++;
+        p.ph = "blocked"; render();
 
+        mutex.signal();
+        await readSem.wait();
+
+        await mutex.wait();
+        waitingReaders--;
+    }
+
+    activeReaders++;
     p.ph = "reading"; p.t0 = Date.now();
-    log(`R${p.id} → entered critical section (reading)`, "r"); render();
+    log(`R${p.id} → reading`, "r");
+    mutex.signal();
+    render();
+
     await sl(p.dur * TICK);
 
-    await sRC.wait();
-    rc--;
-    if (rc === 0) sRes.signal(); // last reader releases resource
-    sRC.signal();
-
-    sRT.signal(); // release readTry — critical for fairness!
+    await mutex.wait();
+    activeReaders--;
 
     log(`R${p.id} done`, "r");
+
+    if (activeReaders === 0 && waitingWriters > 0) {
+        writeSem.signal();
+    }
+
+    mutex.signal();
+
     p.ph = "done"; nDone++;
     procs.delete(p.id);
     render();
 }
 
-// Writer process
+// === Writer ===
 async function runWriter(p) {
-    log(`W${p.id} arrived — will write for ${p.dur}s`, "w");
-    p.ph = "wait_rt"; render();
+    log(`W${p.id} wants to write`, "w");
+    p.ph = "wait"; render();
 
-    waitingWriters++;              // mark this writer as waiting
-    await sRT.wait();              // acquire readTry to block new readers
-    p.ph = "wait_res";
-    log(`W${p.id} acquired readTry — new readers now blocked`, "w"); render();
-    await sRes.wait();             // acquire exclusive resource
-    waitingWriters--;              // done waiting
+    await mutex.wait();
 
+    while (activeReaders > 0 || activeWriters > 0) {
+        waitingWriters++;
+        p.ph = "blocked"; render();
+
+        mutex.signal();
+        await writeSem.wait();
+
+        await mutex.wait();
+        waitingWriters--;
+    }
+
+    activeWriters++;
     p.ph = "writing"; p.t0 = Date.now();
-    log(`W${p.id} → entered critical section (exclusive write)`, "w"); render();
+    log(`W${p.id} → writing`, "w");
+    mutex.signal();
+    render();
+
     await sl(p.dur * TICK);
 
-    sRes.signal();                 // release resource
-    sRT.signal();                  // release readTry
-    log(`W${p.id} done — readTry released, readers unblocked`, "w");
+    await mutex.wait();
+    activeWriters--;
+
+    log(`W${p.id} done`, "w");
+
+    if (waitingWriters > 0) {
+        writeSem.signal();
+    } else {
+        for (let i = 0; i < waitingReaders; i++) {
+            readSem.signal();
+        }
+    }
+
+    mutex.signal();
+
     p.ph = "done"; nDone++;
     procs.delete(p.id);
     render();
@@ -135,9 +181,9 @@ function card(p) {
 
 // Render all UI elements
 function render() {
-    document.getElementById("sv-rt").textContent = sRT.v;
-    document.getElementById("sv-res").textContent = sRes.v;
-    document.getElementById("sv-rc").textContent = rc;
+    document.getElementById("sv-rt").textContent = waitingReaders;
+    document.getElementById("sv-res").textContent = waitingWriters;
+    document.getElementById("sv-rc").textContent = activeReaders;
     document.getElementById("sem-rt").className = "rw-sem "+(sRT.v?"on":"off");
     document.getElementById("sem-res").className = "rw-sem "+(sRes.v?"on":"off");
     document.getElementById("wp").className = "rw-wp"+(sRT.v===0?" show":"");
